@@ -2,12 +2,12 @@ cmake_minimum_required(VERSION 3.3)
 project(ov_init)
 
 
-# Include libraries (if we don't have opencv 4, then fallback to opencv 3)
+# Include libraries (if we don't have OpenCV 4, then fall back to OpenCV 3)
 # The OpenCV version needs to match the one used by cv_bridge otherwise you will get a segmentation fault!
 find_package(Eigen3 REQUIRED)
-find_package(OpenCV 3 QUIET)
+find_package(OpenCV 4 QUIET)
 if (NOT OpenCV_FOUND)
-    find_package(OpenCV 4 REQUIRED)
+    find_package(OpenCV 3 REQUIRED)
 endif ()
 find_package(Boost REQUIRED COMPONENTS system filesystem thread date_time)
 find_package(Ceres REQUIRED)
@@ -57,4 +57,3 @@ else ()
     message(STATUS "No ROS versions found or building with ROS disabled, building ROS1.cmake without ROS")
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ROS1.cmake)
 endif ()
-
