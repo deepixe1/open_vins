@@ -20,7 +20,7 @@
 
 ### 1.1 状态扩增与变换雅可比
 
-设系统在克隆前的状态向量为 $\mathbf{x}$，对应的误差状态为 $\tilde{\mathbf{x}}$，当前活跃 IMU 位姿切空间误差为 $\tilde{\mathbf{x}}_{pose} = [{}^I_G\delta\boldsymbol{\theta}^\top, {}^G\tilde{\mathbf{p}}_I^\top]^\top \in \mathbb{R}^6$。
+设系统在克隆前的状态向量为 $\mathbf{x}$，对应的误差状态为 $\tilde{\mathbf{x}}$，当前活跃 IMU 位姿切空间误差为 $\tilde{\mathbf{x}}_{pose} = [{}^I\delta\boldsymbol{\theta}_G^\top, {}^G\tilde{\mathbf{p}}_I^\top]^\top \in \mathbb{R}^6$。
 扩增后的新误差状态向量为：
 $$
 \tilde{\mathbf{x}}_{aug} = \begin{bmatrix} \tilde{\mathbf{x}} \\ \tilde{\mathbf{x}}_{clone} \end{bmatrix} = \mathbf{J}_{aug} \tilde{\mathbf{x}}
@@ -45,7 +45,7 @@ $$
 若开启相机-IMU 时间偏移在线估计（`calib_cam_timeoffset: true`），图像真实曝光时刻在 IMU 时钟下为 $t_{imu} = t_{cam} + t_d$。小时间偏移误差 $\tilde{t}_d$ 会通过运动学直接耦合到位姿克隆中（Li & Mourikis, IJRR 2014）：
 $$
 \begin{aligned}
-{}^{I_{t+t_d}}_G\bar{q} &\simeq \begin{bmatrix} \frac{1}{2}{}^I\boldsymbol{\omega} \tilde{t}_d \\ 1 \end{bmatrix} \otimes {}^{I_{t+\hat{t}_d}}_G\hat{\bar{q}} \\
+{}^{I_{t+t_d}}\bar{q}_G &\simeq \begin{bmatrix} \frac{1}{2}{}^I\boldsymbol{\omega} \tilde{t}_d \\ 1 \end{bmatrix} \otimes {}^{I_{t+\hat{t}_d}}\hat{\bar{q}}_G \\
 {}^G\mathbf{p}_{I_{t+t_d}} &\simeq {}^G\hat{\mathbf{p}}_{I_{t+\hat{t}_d}} + {}^G\hat{\mathbf{v}}_{I_{t+\hat{t}_d}} \tilde{t}_d
 \end{aligned}
 $$
@@ -74,7 +74,7 @@ $$
 对于某个特征点，其在多个克隆相机位姿下具有像素测量集合 $\{ \mathbf{z}_j \}$，反畸变后得到归一化坐标 $\mathbf{x}_{n, j} = [u_{n, j}, v_{n, j}, 1]^\top$。
 在第 $j$ 帧相机系下，投影关系满足对极几何叉积约束：
 $$
-\mathbf{x}_{n, j} \times \left( {}^C_G\mathbf{R}_j {}^G\mathbf{p}_f + {}^C\mathbf{p}_{G, j} \right) = \mathbf{0}
+\mathbf{x}_{n, j} \times \left( {}^{C_j}\mathbf{R}_G {}^G\mathbf{p}_f + {}^{C_j}\mathbf{p}_G \right) = \mathbf{0}
 $$
 展开写成代数方程 $\mathbf{A}_j {}^G\mathbf{p}_f = \mathbf{b}_j$。堆叠所有观测构建超定方程组 $\mathbf{A} {}^G\mathbf{p}_f = \mathbf{b}$，利用奇异值分解（SVD）求解最小二乘闭式解。
 
@@ -92,7 +92,7 @@ $$
 
 设静态路标点在全局系下的三维坐标为 ${}^G\mathbf{p}_f$。在第 $j$ 个克隆相机系下的理论像素投影方程为：
 $$
-\mathbf{z}_{i, j} = \mathbf{h}\left( {}^I_G\mathbf{q}_j, {}^G\mathbf{p}_{I_j}, {}^C_I\mathbf{q}, {}^I\mathbf{p}_C, {}^G\mathbf{p}_f \right) + \mathbf{n}_{i, j}
+\mathbf{z}_{i, j} = \mathbf{h}\left( {}^{I_j}\mathbf{q}_G, {}^G\mathbf{p}_{I_j}, {}^C\mathbf{q}_I, {}^I\mathbf{p}_C, {}^G\mathbf{p}_f \right) + \mathbf{n}_{i, j}
 $$
 在当前线性化点处进行一阶 Taylor 展开：
 $$
@@ -111,21 +111,21 @@ $$
 令中间投影增益矩阵为 $\mathbf{J}_{proj} = \frac{\partial \mathbf{z}}{\partial \mathbf{z}_n} \frac{\partial \mathbf{z}_n}{\partial {}^C\mathbf{p}} \in \mathbb{R}^{2\times 3}$：
 1. **关于路标三维位置的雅可比 $\mathbf{H}_{f}$**：
    $$
-   \mathbf{H}_{f, i, j} = \mathbf{J}_{proj} \cdot {}^C_I\mathbf{R} \cdot {}^I_G\mathbf{R}_j \in \mathbb{R}^{2\times 3}
+   \mathbf{H}_{f, i, j} = \mathbf{J}_{proj} \cdot {}^C\mathbf{R}_I \cdot {}^{I_j}\mathbf{R}_G \in \mathbb{R}^{2\times 3}
    $$
 2. **关于克隆位姿误差的雅可比 $\mathbf{H}_{clone}$**：
-   空间点在当前相机系下为 ${}^C\mathbf{p}_j = {}^C_I\mathbf{R} \cdot {}^I_G\mathbf{R}_j ({}^G\mathbf{p}_f - {}^G\mathbf{p}_{I_j}) + {}^C\mathbf{p}_I$：
-   - 关于姿态误差 ${}^I\delta\boldsymbol{\theta}_j$：
+   空间点在当前相机系下为 ${}^C\mathbf{p}_j = {}^C\mathbf{R}_I \cdot {}^{I_j}\mathbf{R}_G ({}^G\mathbf{p}_f - {}^G\mathbf{p}_{I_j}) + {}^C\mathbf{p}_I$：
+   - 关于姿态误差 ${}^{I_j}\delta\boldsymbol{\theta}_G$：
      $$
-     \frac{\partial {}^C\mathbf{p}_j}{\partial {}^I\delta\boldsymbol{\theta}_j} = {}^C_I\mathbf{R} \lfloor {}^I\mathbf{p}_{f, j} \times \rfloor
+     \frac{\partial {}^C\mathbf{p}_j}{\partial {}^{I_j}\delta\boldsymbol{\theta}_G} = {}^C\mathbf{R}_I \lfloor {}^{I_j}\mathbf{p}_f \times \rfloor
      $$
    - 关于位置误差 ${}^G\tilde{\mathbf{p}}_{I_j}$：
      $$
-     \frac{\partial {}^C\mathbf{p}_j}{\partial {}^G\tilde{\mathbf{p}}_{I_j}} = -{}^C_I\mathbf{R} \cdot {}^I_G\mathbf{R}_j
+     \frac{\partial {}^C\mathbf{p}_j}{\partial {}^G\tilde{\mathbf{p}}_{I_j}} = -{}^C\mathbf{R}_I \cdot {}^{I_j}\mathbf{R}_G
      $$
    因此：
    $$
-   \mathbf{H}_{clone, i, j} = \mathbf{J}_{proj} \begin{bmatrix} {}^C_I\mathbf{R} \lfloor {}^I\mathbf{p}_{f, j} \times \rfloor & -{}^C_I\mathbf{R} \cdot {}^I_G\mathbf{R}_j \end{bmatrix} \in \mathbb{R}^{2\times 6}
+   \mathbf{H}_{clone, i, j} = \mathbf{J}_{proj} \begin{bmatrix} {}^C\mathbf{R}_I \lfloor {}^{I_j}\mathbf{p}_f \times \rfloor & -{}^C\mathbf{R}_I \cdot {}^{I_j}\mathbf{R}_G \end{bmatrix} \in \mathbb{R}^{2\times 6}
    $$
 
 堆叠该特征在所有观测相机与历史时刻的 $M$ 次观测，得到特征整体的线性化观测方程组：

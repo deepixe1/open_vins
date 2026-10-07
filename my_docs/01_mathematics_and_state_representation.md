@@ -38,16 +38,16 @@
 设空间中存在某个静态三维路标点，其在全局系下的三维坐标为 ${}^G\mathbf{p}_f$。
 - 其在当前 IMU 机体系 $\{I\}$ 下的坐标为：
   $$
-  {}^I\mathbf{p}_f = {}^I_G\mathbf{R} \left( {}^G\mathbf{p}_f - {}^G\mathbf{p}_I \right)
+  {}^I\mathbf{p}_f = {}^I\mathbf{R}_G \left( {}^G\mathbf{p}_f - {}^G\mathbf{p}_I \right)
   $$
-  其中 ${}^I_G\mathbf{R} \in SO(3)$ 表示从全局系 $\{G\}$ 到 IMU 系 $\{I\}$ 的旋转矩阵；${}^G\mathbf{p}_I \in \mathbb{R}^3$ 表示 IMU 在全局系下的位置向量。
-- 进一步转换到相机坐标系 $\{C\}$ 下（利用相机与 IMU 之间的外参矩阵 ${}^C_I\mathbf{R}$ 和平移 ${}^C\mathbf{p}_I = -{}^C_I\mathbf{R}{}^I\mathbf{p}_C$）：
+  其中 ${}^I\mathbf{R}_G \in SO(3)$ 表示从全局系 $\{G\}$ 到 IMU 系 $\{I\}$ 的旋转矩阵；${}^G\mathbf{p}_I \in \mathbb{R}^3$ 表示 IMU 在全局系下的位置向量。
+- 进一步转换到相机坐标系 $\{C\}$ 下（利用相机与 IMU 之间的外参矩阵 ${}^C\mathbf{R}_I$ 和平移 ${}^C\mathbf{p}_I = -{}^C\mathbf{R}_I{}^I\mathbf{p}_C$）：
   $$
-  {}^C\mathbf{p}_f = {}^C_I\mathbf{R} {}^I\mathbf{p}_f + {}^C\mathbf{p}_I = {}^C_I\mathbf{R} \left( {}^I_G\mathbf{R} \left( {}^G\mathbf{p}_f - {}^G\mathbf{p}_I \right) - {}^I\mathbf{p}_C \right)
+  {}^C\mathbf{p}_f = {}^C\mathbf{R}_I {}^I\mathbf{p}_f + {}^C\mathbf{p}_I = {}^C\mathbf{R}_I \left( {}^I\mathbf{R}_G \left( {}^G\mathbf{p}_f - {}^G\mathbf{p}_I \right) - {}^I\mathbf{p}_C \right)
   $$
-  在 OpenVINS 源码实现中，外参通常显式维护为 ${}^C_I\mathbf{R}$（即代码中的 `R_ItoC`）与 ${}^I\mathbf{p}_C$（即 IMU 坐标系下相机光心的平移 `p_IinC`），因此点投影公式写为：
+  在 OpenVINS 源码实现中，外参通常显式维护为 ${}^C\mathbf{R}_I$（即代码中的 `R_ItoC`）与 ${}^I\mathbf{p}_C$（即 IMU 坐标系下相机光心的平移 `p_IinC`），因此点投影公式写为：
   $$
-  {}^C\mathbf{p}_f = {}^C_I\mathbf{R} \cdot {}^I\mathbf{p}_f + {}^I\mathbf{p}_C \quad \text{或直接根据标定定义解算}
+  {}^C\mathbf{p}_f = {}^C\mathbf{R}_I \cdot {}^I\mathbf{p}_f + {}^I\mathbf{p}_C \quad \text{或直接根据标定定义解算}
   $$
 
 ---
@@ -138,20 +138,20 @@ $$
 
 OpenVINS 采用**左乘四元数误差**（Left-multiplicative error state）：
 $$
-{}^I_G\bar{q} \simeq \delta\bar{q} \otimes {}^I_G\hat{\bar{q}} = \begin{bmatrix} \frac{1}{2}\delta\boldsymbol{\theta} \\ 1 \end{bmatrix} \otimes {}^I_G\hat{\bar{q}}
+{}^I\bar{q}_G \simeq \delta\bar{q} \otimes {}^I\hat{\bar{q}}_G = \begin{bmatrix} \frac{1}{2}\delta\boldsymbol{\theta} \\ 1 \end{bmatrix} \otimes {}^I\hat{\bar{q}}_G
 $$
 其中：
-- ${}^I_G\bar{q}$ 为未知真值姿态；
-- ${}^I_G\hat{\bar{q}}$ 为当前滤波器估计均值；
+- ${}^I\bar{q}_G$ 为未知真值姿态；
+- ${}^I\hat{\bar{q}}_G$ 为当前滤波器估计均值；
 - $\delta\boldsymbol{\theta} \in \mathbb{R}^3$ 为切空间中的三维微小角误差向量（即李代数 $\mathfrak{so}(3)$ 扰动）；
 - $\delta\bar{q} \approx \begin{bmatrix} \frac{1}{2}\delta\boldsymbol{\theta} \\ 1 \end{bmatrix}$ 为一阶近似的小扰动四元数。
 
 将此式代入旋转矩阵映射公式，可推导对应的旋转矩阵一阶近似：
 $$
 \begin{aligned}
-{}^I_G\mathbf{R} &= \mathbf{R}(\delta\bar{q}) {}^I_G\hat{\mathbf{R}} \\
-&\approx \exp(-\lfloor\delta\boldsymbol{\theta}\times\rfloor) {}^I_G\hat{\mathbf{R}} \\
-&\approx (\mathbf{I}_3 - \lfloor\delta\boldsymbol{\theta}\times\rfloor) {}^I_G\hat{\mathbf{R}}
+{}^I\mathbf{R}_G &= \mathbf{R}(\delta\bar{q}) {}^I\hat{\mathbf{R}}_G \\
+&\approx \exp(-\lfloor\delta\boldsymbol{\theta}\times\rfloor) {}^I\hat{\mathbf{R}}_G \\
+&\approx (\mathbf{I}_3 - \lfloor\delta\boldsymbol{\theta}\times\rfloor) {}^I\hat{\mathbf{R}}_G
 \end{aligned}
 $$
 > **重要物理意义**：
@@ -192,16 +192,16 @@ $$
 
 $$
 \mathbf{x}_I = \begin{bmatrix}
-{}^I_G\bar{q}^\top & {}^G\mathbf{p}_I^\top & {}^G\mathbf{v}_I^\top & \mathbf{b}_g^\top & \mathbf{b}_a^\top
+{}^I\bar{q}_G^\top & {}^G\mathbf{p}_I^\top & {}^G\mathbf{v}_I^\top & \mathbf{b}_g^\top & \mathbf{b}_a^\top
 \end{bmatrix}^\top \in \mathbb{R}^{16}
 $$
 对应的切空间误差状态：
 $$
 \tilde{\mathbf{x}}_I = \begin{bmatrix}
-{}^I_G\delta\boldsymbol{\theta}^\top & {}^G\tilde{\mathbf{p}}_I^\top & {}^G\tilde{\mathbf{v}}_I^\top & \tilde{\mathbf{b}}_g^\top & \tilde{\mathbf{b}}_a^\top
+{}^I\delta\boldsymbol{\theta}_G^\top & {}^G\tilde{\mathbf{p}}_I^\top & {}^G\tilde{\mathbf{v}}_I^\top & \tilde{\mathbf{b}}_g^\top & \tilde{\mathbf{b}}_a^\top
 \end{bmatrix}^\top \in \mathbb{R}^{15}
 $$
-- ${}^I_G\bar{q}$：当前 IMU 姿态四元数（误差维度 3）；
+- ${}^I\bar{q}_G$：当前 IMU 姿态四元数（误差维度 3）；
 - ${}^G\mathbf{p}_I$：当前 IMU 在全局系下的位置（误差维度 3）；
 - ${}^G\mathbf{v}_I$：当前 IMU 在全局系下的线速度（误差维度 3）；
 - $\mathbf{b}_g$：陀螺仪零偏随机游走偏置（误差维度 3）；
@@ -212,13 +212,13 @@ $$
 维护过去 $N$ 帧图像曝光时刻捕获的 IMU 位姿克隆副本：
 $$
 \mathbf{x}_C = \begin{bmatrix}
-{}^{I_{c_1}}_G\bar{q}^\top & {}^G\mathbf{p}_{I_{c_1}}^\top & \cdots & {}^{I_{c_N}}_G\bar{q}^\top & {}^G\mathbf{p}_{I_{c_N}}^\top
+{}^{I_{c_1}}\bar{q}_G^\top & {}^G\mathbf{p}_{I_{c_1}}^\top & \cdots & {}^{I_{c_N}}\bar{q}_G^\top & {}^G\mathbf{p}_{I_{c_N}}^\top
 \end{bmatrix}^\top
 $$
 对应的切空间误差状态：
 $$
 \tilde{\mathbf{x}}_C = \begin{bmatrix}
-{}^{I_{c_1}}_G\delta\boldsymbol{\theta}^\top & {}^G\tilde{\mathbf{p}}_{I_{c_1}}^\top & \cdots & {}^{I_{c_N}}_G\delta\boldsymbol{\theta}^\top & {}^G\tilde{\mathbf{p}}_{I_{c_N}}^\top
+{}^{I_{c_1}}\delta\boldsymbol{\theta}_G^\top & {}^G\tilde{\mathbf{p}}_{I_{c_1}}^\top & \cdots & {}^{I_{c_N}}\delta\boldsymbol{\theta}_G^\top & {}^G\tilde{\mathbf{p}}_{I_{c_N}}^\top
 \end{bmatrix}^\top \in \mathbb{R}^{6N}
 $$
 
@@ -230,14 +230,14 @@ $$
 \mathbf{x}_{cam\_ext}^\top & \mathbf{x}_{cam\_int}^\top & t_d & \mathbf{x}_{imu\_int}^\top
 \end{bmatrix}^\top
 $$
-1. **相机外参状态 $\mathbf{x}_{cam\_ext}$**：每个相机的空间刚体变换 $\{{}^{C_i}_I\bar{q}, {}^I\mathbf{p}_{C_i}\}$（每个相机 $6$ 维误差）。
+1. **相机外参状态 $\mathbf{x}_{cam\_ext}$**：每个相机的空间刚体变换 $\{{}^{C_i}\bar{q}_I, {}^I\mathbf{p}_{C_i}\}$（每个相机 $6$ 维误差）。
 2. **相机内参状态 $\mathbf{x}_{cam\_int}$**：焦距、主点与畸变系数（根据模型不同为 $4\sim 8$ 维）。
 3. **相机-IMU 时间偏移 $t_d$**：描述相机时钟与 IMU 时钟的时间戳偏差（1 维），物理模型为 $t_{imu} = t_{cam} + t_d$。
 4. **IMU 内参状态 $\mathbf{x}_{imu\_int}$**：
    - 陀螺仪轴系尺度与不正交矩阵 $\mathbf{D}_w$（6 维）；
    - 加速度计轴系尺度与不正交矩阵 $\mathbf{D}_a$（6 维）；
    - 陀螺仪重力敏感度耦合矩阵 $\mathbf{T}_g$（9 维）；
-   - 加速度计与陀螺仪坐标系之间的微小相对旋转 ${}^{A}_G\bar{q}$（3 维）。
+   - 加速度计与陀螺仪坐标系之间的微小相对旋转 ${}^A\bar{q}_G$（3 维）。
 
 ### 4.4 长期 SLAM 路标状态 $\mathbf{x}_L$
 
@@ -358,7 +358,7 @@ void update(const Eigen::VectorXd &dx) override {
   set_value_internal(ov_core::quatnorm(q_new));
 }
 ```
-这段代码直接呼应了前述公式 ${}^I_G\bar{q} \leftarrow \text{normalize}\left(\begin{bmatrix} \frac{1}{2}\delta\boldsymbol{\theta} \\ 1 \end{bmatrix} \otimes {}^I_G\hat{\bar{q}}\right)$。
+这段代码直接呼应了前述公式 ${}^I\bar{q}_G \leftarrow \text{normalize}\left(\begin{bmatrix} \frac{1}{2}\delta\boldsymbol{\theta} \\ 1 \end{bmatrix} \otimes {}^I\hat{\bar{q}}_G\right)$。
 
 ### 6.3 `ov_msckf::State` 与 `ov_msckf::StateHelper` 的友元安全机制
 文件路径：[ov_msckf/src/state/State.h](../ov_msckf/src/state/State.h#L180-L240) 与 [ov_msckf/src/state/StateHelper.h](../ov_msckf/src/state/StateHelper.h)

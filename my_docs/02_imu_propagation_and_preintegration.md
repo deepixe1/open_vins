@@ -14,7 +14,7 @@
 $$
 \begin{aligned}
 \boldsymbol{\omega}_m(t) &= \boldsymbol{\omega}(t) + \mathbf{b}_g(t) + \mathbf{w}_g(t) \\
-\mathbf{a}_m(t) &= {}^I_G\mathbf{R}(t) \left( {}^G\mathbf{a}(t) - {}^G\mathbf{g} \right) + \mathbf{b}_a(t) + \mathbf{w}_a(t)
+\mathbf{a}_m(t) &= {}^I\mathbf{R}_G(t) \left( {}^G\mathbf{a}(t) - {}^G\mathbf{g} \right) + \mathbf{b}_a(t) + \mathbf{w}_a(t)
 \end{aligned}
 $$
 其中：
@@ -32,12 +32,12 @@ $$
 
 ### 1.2 连续时间真实状态微分方程
 
-根据刚体空间运动学，在 JPL 坐标约定下，IMU 状态向量 $\mathbf{x}_I(t) = [{}^I_G\bar{q}^\top, {}^G\mathbf{p}_I^\top, {}^G\mathbf{v}_I^\top, \mathbf{b}_g^\top, \mathbf{b}_a^\top]^\top$ 满足如下非线性常微分方程组：
+根据刚体空间运动学，在 JPL 坐标约定下，IMU 状态向量 $\mathbf{x}_I(t) = [{}^I\bar{q}_G^\top, {}^G\mathbf{p}_I^\top, {}^G\mathbf{v}_I^\top, \mathbf{b}_g^\top, \mathbf{b}_a^\top]^\top$ 满足如下非线性常微分方程组：
 $$
 \begin{aligned}
-{}^I_G\dot{\bar{q}}(t) &= \frac{1}{2} \boldsymbol{\Omega}(\boldsymbol{\omega}(t)) {}^I_G\bar{q}(t) = \frac{1}{2} \begin{bmatrix} -\lfloor\boldsymbol{\omega}(t)\times\rfloor & \boldsymbol{\omega}(t) \\ -\boldsymbol{\omega}(t)^\top & 0 \end{bmatrix} {}^I_G\bar{q}(t) \\
+{}^I\dot{\bar{q}}_G(t) &= \frac{1}{2} \boldsymbol{\Omega}(\boldsymbol{\omega}(t)) {}^I\bar{q}_G(t) = \frac{1}{2} \begin{bmatrix} -\lfloor\boldsymbol{\omega}(t)\times\rfloor & \boldsymbol{\omega}(t) \\ -\boldsymbol{\omega}(t)^\top & 0 \end{bmatrix} {}^I\bar{q}_G(t) \\
 {}^G\dot{\mathbf{p}}_I(t) &= {}^G\mathbf{v}_I(t) \\
-{}^G\dot{\mathbf{v}}_I(t) &= {}^I_G\mathbf{R}(t)^\top \mathbf{a}(t) + {}^G\mathbf{g} \\
+{}^G\dot{\mathbf{v}}_I(t) &= {}^I\mathbf{R}_G(t)^\top \mathbf{a}(t) + {}^G\mathbf{g} \\
 \dot{\mathbf{b}}_g(t) &= \mathbf{w}_{bg}(t) \\
 \dot{\mathbf{b}}_a(t) &= \mathbf{w}_{ba}(t)
 \end{aligned}
@@ -46,7 +46,7 @@ $$
 
 > **关于重力符号的工程注记**：
 > 在 OpenVINS 内部，为保证重力幅值正标量定义，代码中设 $\mathbf{g}_{ov} = [0, 0, g]^\top$（$g \approx 9.81$），因此速度导数在代码中写为：
-> `${}^G\dot{\mathbf{v}}_I(t) = {}^I_G\mathbf{R}(t)^\top \mathbf{a}(t) - \mathbf{g}_{ov}$`。推导时与此保持一致。
+> `${}^G\dot{\mathbf{v}}_I(t) = {}^I\mathbf{R}_G(t)^\top \mathbf{a}(t) - \mathbf{g}_{ov}$`。推导时与此保持一致。
 
 ---
 
@@ -69,17 +69,17 @@ $$
 
 根据第 01 章 JPL 左乘误差四元数定义：
 $$
-{}^I_G\bar{q} \simeq \delta\bar{q} \otimes {}^I_G\hat{\bar{q}} \approx \begin{bmatrix} \frac{1}{2}\delta\boldsymbol{\theta} \\ 1 \end{bmatrix} \otimes {}^I_G\hat{\bar{q}}
+{}^I\bar{q}_G \simeq \delta\bar{q} \otimes {}^I\hat{\bar{q}}_G \approx \begin{bmatrix} \frac{1}{2}\delta\boldsymbol{\theta} \\ 1 \end{bmatrix} \otimes {}^I\hat{\bar{q}}_G
 $$
 两边对时间 $t$ 求导，并利用四元数求导链式法则：
 $$
-{}^I_G\dot{\bar{q}} = \delta\dot{\bar{q}} \otimes {}^I_G\hat{\bar{q}} + \delta\bar{q} \otimes {}^I_G\dot{\hat{\bar{q}}}
+{}^I\dot{\bar{q}}_G = \delta\dot{\bar{q}} \otimes {}^I\hat{\bar{q}}_G + \delta\bar{q} \otimes {}^I\dot{\hat{\bar{q}}}_G
 $$
 将运动学方程代入左边和右边：
 $$
-\frac{1}{2}\begin{bmatrix} \boldsymbol{\omega} \\ 0 \end{bmatrix}_R \otimes \delta\bar{q} \otimes {}^I_G\hat{\bar{q}} = \begin{bmatrix} \frac{1}{2}\delta\dot{\boldsymbol{\theta}} \\ 0 \end{bmatrix} \otimes {}^I_G\hat{\bar{q}} + \delta\bar{q} \otimes \left( \frac{1}{2}\begin{bmatrix} \hat{\boldsymbol{\omega}} \\ 0 \end{bmatrix}_R \otimes {}^I_G\hat{\bar{q}} \right)
+\frac{1}{2}\begin{bmatrix} \boldsymbol{\omega} \\ 0 \end{bmatrix}_R \otimes \delta\bar{q} \otimes {}^I\hat{\bar{q}}_G = \begin{bmatrix} \frac{1}{2}\delta\dot{\boldsymbol{\theta}} \\ 0 \end{bmatrix} \otimes {}^I\hat{\bar{q}}_G + \delta\bar{q} \otimes \left( \frac{1}{2}\begin{bmatrix} \hat{\boldsymbol{\omega}} \\ 0 \end{bmatrix}_R \otimes {}^I\hat{\bar{q}}_G \right)
 $$
-两边右侧同时消去 $\otimes {}^I_G\hat{\bar{q}}$，并利用小量一阶近似展开，可严格导出切空间姿态角误差微分方程：
+两边右侧同时消去 $\otimes {}^I\hat{\bar{q}}_G$，并利用小量一阶近似展开，可严格导出切空间姿态角误差微分方程：
 $$
 \delta\dot{\boldsymbol{\theta}}(t) = -\lfloor\hat{\boldsymbol{\omega}}(t)\times\rfloor \delta\boldsymbol{\theta}(t) - \tilde{\mathbf{b}}_g(t) - \mathbf{w}_g(t)
 $$
@@ -89,26 +89,26 @@ $$
 
 真实速度导数为：
 $$
-{}^G\dot{\mathbf{v}}_I = {}^I_G\mathbf{R}^\top (\mathbf{a}_m - \mathbf{b}_a - \mathbf{w}_a) - \mathbf{g}
+{}^G\dot{\mathbf{v}}_I = {}^I\mathbf{R}_G^\top (\mathbf{a}_m - \mathbf{b}_a - \mathbf{w}_a) - \mathbf{g}
 $$
 估计速度导数为：
 $$
-{}^G\dot{\hat{\mathbf{v}}}_I = {}^I_G\hat{\mathbf{R}}^\top (\mathbf{a}_m - \hat{\mathbf{b}}_a) - \mathbf{g}
+{}^G\dot{\hat{\mathbf{v}}}_I = {}^I\hat{\mathbf{R}}_G^\top (\mathbf{a}_m - \hat{\mathbf{b}}_a) - \mathbf{g}
 $$
-利用第 01 章旋转矩阵近似关系 ${}^I_G\mathbf{R} \approx (\mathbf{I}_3 - \lfloor\delta\boldsymbol{\theta}\times\rfloor) {}^I_G\hat{\mathbf{R}}$，其转置为：
+利用第 01 章旋转矩阵近似关系 ${}^I\mathbf{R}_G \approx (\mathbf{I}_3 - \lfloor\delta\boldsymbol{\theta}\times\rfloor) {}^I\hat{\mathbf{R}}_G$，其转置为：
 $$
-{}^I_G\mathbf{R}^\top \approx {}^I_G\hat{\mathbf{R}}^\top (\mathbf{I}_3 + \lfloor\delta\boldsymbol{\theta}\times\rfloor)
+{}^I\mathbf{R}_G^\top \approx {}^I\hat{\mathbf{R}}_G^\top (\mathbf{I}_3 + \lfloor\delta\boldsymbol{\theta}\times\rfloor)
 $$
 将此式代入真实速度导数中：
 $$
 \begin{aligned}
-{}^G\dot{\mathbf{v}}_I &= {}^I_G\hat{\mathbf{R}}^\top (\mathbf{I}_3 + \lfloor\delta\boldsymbol{\theta}\times\rfloor) \left( \hat{\mathbf{a}} - \tilde{\mathbf{b}}_a - \mathbf{w}_a \right) - \mathbf{g} \\
-&\approx {}^I_G\hat{\mathbf{R}}^\top \hat{\mathbf{a}} + {}^I_G\hat{\mathbf{R}}^\top \lfloor\delta\boldsymbol{\theta}\times\rfloor \hat{\mathbf{a}} - {}^I_G\hat{\mathbf{R}}^\top \tilde{\mathbf{b}}_a - {}^I_G\hat{\mathbf{R}}^\top \mathbf{w}_a - \mathbf{g}
+{}^G\dot{\mathbf{v}}_I &= {}^I\hat{\mathbf{R}}_G^\top (\mathbf{I}_3 + \lfloor\delta\boldsymbol{\theta}\times\rfloor) \left( \hat{\mathbf{a}} - \tilde{\mathbf{b}}_a - \mathbf{w}_a \right) - \mathbf{g} \\
+&\approx {}^I\hat{\mathbf{R}}_G^\top \hat{\mathbf{a}} + {}^I\hat{\mathbf{R}}_G^\top \lfloor\delta\boldsymbol{\theta}\times\rfloor \hat{\mathbf{a}} - {}^I\hat{\mathbf{R}}_G^\top \tilde{\mathbf{b}}_a - {}^I\hat{\mathbf{R}}_G^\top \mathbf{w}_a - \mathbf{g}
 \end{aligned}
 $$
 利用向量外积反对称恒等式 $\lfloor\delta\boldsymbol{\theta}\times\rfloor \hat{\mathbf{a}} = -\lfloor\hat{\mathbf{a}}\times\rfloor \delta\boldsymbol{\theta}$，并将上式减去估计值导数，得到：
 $$
-{}^G\dot{\tilde{\mathbf{v}}}_I(t) = -{}^I_G\hat{\mathbf{R}}(t)^\top \lfloor\hat{\mathbf{a}}(t)\times\rfloor \delta\boldsymbol{\theta}(t) - {}^I_G\hat{\mathbf{R}}(t)^\top \tilde{\mathbf{b}}_a(t) - {}^I_G\hat{\mathbf{R}}(t)^\top \mathbf{w}_a(t)
+{}^G\dot{\tilde{\mathbf{v}}}_I(t) = -{}^I\hat{\mathbf{R}}_G(t)^\top \lfloor\hat{\mathbf{a}}(t)\times\rfloor \delta\boldsymbol{\theta}(t) - {}^I\hat{\mathbf{R}}_G(t)^\top \tilde{\mathbf{b}}_a(t) - {}^I\hat{\mathbf{R}}_G(t)^\top \mathbf{w}_a(t)
 $$
 
 ### 2.3 位置与零偏误差动力学
@@ -129,7 +129,7 @@ $$
 \mathbf{F}_c(t) = \begin{bmatrix}
 -\lfloor\hat{\boldsymbol{\omega}}(t)\times\rfloor & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & -\mathbf{I}_3 & \mathbf{0}_{3\times 3} \\
 \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{I}_3 & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} \\
--{}^I_G\hat{\mathbf{R}}(t)^\top \lfloor\hat{\mathbf{a}}(t)\times\rfloor & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & -{}^I_G\hat{\mathbf{R}}(t)^\top \\
+-{}^I\hat{\mathbf{R}}_G(t)^\top \lfloor\hat{\mathbf{a}}(t)\times\rfloor & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & -{}^I\hat{\mathbf{R}}_G(t)^\top \\
 \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} \\
 \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3}
 \end{bmatrix}_{15\times 15}
@@ -139,7 +139,7 @@ $$
 \mathbf{G}_c(t) = \begin{bmatrix}
 -\mathbf{I}_3 & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} \\
 \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} \\
-\mathbf{0}_{3\times 3} & -{}^I_G\hat{\mathbf{R}}(t)^\top & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} \\
+\mathbf{0}_{3\times 3} & -{}^I\hat{\mathbf{R}}_G(t)^\top & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} \\
 \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{I}_3 & \mathbf{0}_{3\times 3} \\
 \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{0}_{3\times 3} & \mathbf{I}_3
 \end{bmatrix}_{15\times 12}
@@ -168,7 +168,7 @@ $$
 
 定义旋转增量矩阵：
 $$
-\Delta\mathbf{R} = {}^I_{k+1}\mathbf{R}^{I_k} = \exp\left(-\lfloor\hat{\boldsymbol{\omega}}\times\rfloor \Delta t\right)
+\Delta\mathbf{R} = {}^{I_{k+1}}\mathbf{R}_{I_k} = \exp\left(-\lfloor\hat{\boldsymbol{\omega}}\times\rfloor \Delta t\right)
 $$
 并定义高阶积分核算子（通过 Rodrigues 公式精确积分）：
 $$
@@ -192,8 +192,8 @@ $$
 - 速度与位置关于姿态误差的雅可比：
   $$
   \begin{aligned}
-  \boldsymbol{\Phi}_{v\theta} &= -{}^I_G\hat{\mathbf{R}}_k^\top \lfloor \hat{\mathbf{v}}_{k+1} - \hat{\mathbf{v}}_k + \mathbf{g}_{ov}\Delta t \times \rfloor \\
-  \boldsymbol{\Phi}_{p\theta} &= -{}^I_G\hat{\mathbf{R}}_k^\top \lfloor \hat{\mathbf{p}}_{k+1} - \hat{\mathbf{p}}_k - \hat{\mathbf{v}}_k \Delta t + \frac{1}{2}\mathbf{g}_{ov}\Delta t^2 \times \rfloor
+  \boldsymbol{\Phi}_{v\theta} &= -{}^{I_k}\hat{\mathbf{R}}_G^\top \lfloor \hat{\mathbf{v}}_{k+1} - \hat{\mathbf{v}}_k + \mathbf{g}_{ov}\Delta t \times \rfloor \\
+  \boldsymbol{\Phi}_{p\theta} &= -{}^{I_k}\hat{\mathbf{R}}_G^\top \lfloor \hat{\mathbf{p}}_{k+1} - \hat{\mathbf{p}}_k - \hat{\mathbf{v}}_k \Delta t + \frac{1}{2}\mathbf{g}_{ov}\Delta t^2 \times \rfloor
   \end{aligned}
   $$
 - 姿态关于陀螺零偏的雅可比：
@@ -306,9 +306,9 @@ $$
 将 $t_k$ 到 $t_{k+1}$ 区间内的位姿变换投影到起始时刻机体系 $\{I_k\}$：
 $$
 \begin{aligned}
-{}^{I_{k+1}}_G\mathbf{R} &= \Delta\mathbf{R}(t_{k+1}) {}^I_k\mathbf{R} \\
-{}^G\mathbf{v}(t_{k+1}) &= {}^G\mathbf{v}(t_k) + {}^I_k\mathbf{R}^\top \Delta\mathbf{v}(t_{k+1}) + {}^G\mathbf{g}\Delta t \\
-{}^G\mathbf{p}(t_{k+1}) &= {}^G\mathbf{p}(t_k) + {}^G\mathbf{v}(t_k)\Delta t + {}^I_k\mathbf{R}^\top \Delta\mathbf{p}(t_{k+1}) + \frac{1}{2}{}^G\mathbf{g}\Delta t^2
+{}^{I_{k+1}}\mathbf{R}_G &= \Delta\mathbf{R}(t_{k+1}) {}^{I_k}\mathbf{R}_G \\
+{}^G\mathbf{v}(t_{k+1}) &= {}^G\mathbf{v}(t_k) + {}^{I_k}\mathbf{R}_G^\top \Delta\mathbf{v}(t_{k+1}) + {}^G\mathbf{g}\Delta t \\
+{}^G\mathbf{p}(t_{k+1}) &= {}^G\mathbf{p}(t_k) + {}^G\mathbf{v}(t_k)\Delta t + {}^{I_k}\mathbf{R}_G^\top \Delta\mathbf{p}(t_{k+1}) + \frac{1}{2}{}^G\mathbf{g}\Delta t^2
 \end{aligned}
 $$
 预积分观测量 $\Delta\mathbf{R}, \Delta\mathbf{v}, \Delta\mathbf{p}$ 仅与传感器局部物理读数相关，与初始时刻的全局位姿、速度及重力完全解耦！

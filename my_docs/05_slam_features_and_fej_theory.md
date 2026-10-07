@@ -51,7 +51,7 @@ $$
 $$
 其与全局坐标的关系为：
 $$
-{}^G\mathbf{p}_f = {}^G_A\mathbf{R} {}^A\mathbf{p}_f + {}^G\mathbf{p}_A
+{}^G\mathbf{p}_f = {}^G\mathbf{R}_A {}^A\mathbf{p}_f + {}^G\mathbf{p}_A
 $$
 - **优点**：相对于局部相机的坐标尺度较小，数值稳定性优于全局坐标。
 
@@ -94,10 +94,10 @@ OpenVINS 在 [ov_msckf/src/update/UpdaterSLAM.cpp](../ov_msckf/src/update/Update
 对于基于锚定坐标系表达的特征，其几何基准依赖于某个特定的历史克隆位姿 $\{A_{old}\}$。
 随着滑动窗口向前推进，老克隆位姿最终必须被边缘化剔除。若其锚定特征仍处于活跃跟踪状态，必须将其锚点坐标系无缝迁移到最新的克隆位姿 $\{A_{new}\}$ 上！
 
-设空间点在旧锚点系下为 ${}^{A_{old}}\mathbf{p}_f$，新锚点相对于旧锚点的位姿为 $\{{}^{A_{new}}_{A_{old}}\mathbf{R}, {}^{A_{old}}\mathbf{p}_{A_{new}}\}$。
+设空间点在旧锚点系下为 ${}^{A_{old}}\mathbf{p}_f$，新锚点相对于旧锚点的位姿为 $\{{}^{A_{new}}\mathbf{R}_{A_{old}}, {}^{A_{old}}\mathbf{p}_{A_{new}}\}$。
 空间坐标变换关系为：
 $$
-{}^{A_{new}}\mathbf{p}_f = {}^{A_{new}}_{A_{old}}\mathbf{R} \left( {}^{A_{old}}\mathbf{p}_f - {}^{A_{old}}\mathbf{p}_{A_{new}} \right)
+{}^{A_{new}}\mathbf{p}_f = {}^{A_{new}}\mathbf{R}_{A_{old}} \left( {}^{A_{old}}\mathbf{p}_f - {}^{A_{old}}\mathbf{p}_{A_{new}} \right)
 $$
 通过求导构建坐标迁移雅可比矩阵 $\mathbf{J}_{anchor}$，不仅重新计算特征的均值，而且严格变换相关联的协方差子块，从而在保证全局几何约束完全等价的前提下，安全剔除老克隆位姿！
 > **源码对照**：详见 [ov_msckf/src/update/UpdaterSLAM.cpp](../ov_msckf/src/update/UpdaterSLAM.cpp#L480-L580) 的 `change_anchors` 与 `perform_anchor_change`。
@@ -133,7 +133,7 @@ $$
 对于包含 IMU 状态与路标点的简化系统，该零空间基底显式表达为（Huang et al., IJRR 2010）：
 $$
 \mathcal{N} = \begin{bmatrix}
-{}^I_G\mathbf{R}_0 {}^G\mathbf{g} & \mathbf{0}_{3\times 3} \\
+{}^{I_0}\mathbf{R}_G {}^G\mathbf{g} & \mathbf{0}_{3\times 3} \\
 -\lfloor {}^G\mathbf{p}_{I_0} \times \rfloor {}^G\mathbf{g} & \mathbf{I}_{3} \\
 -\lfloor {}^G\mathbf{v}_{I_0} \times \rfloor {}^G\mathbf{g} & \mathbf{0}_{3\times 3} \\
 -\lfloor {}^G\mathbf{p}_f \times \rfloor {}^G\mathbf{g} & \mathbf{I}_{3}

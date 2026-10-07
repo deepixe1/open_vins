@@ -13,29 +13,29 @@ OpenVINS 具备强大的全在线自标定（Online Self-Calibration）能力，
 
 空间外参定义为从 IMU 机体系 $\{I\}$ 到第 $i$ 个相机系 $\{C_i\}$ 的刚体空间变换：
 $$
-\mathbf{x}_{ext, i} = \left\{ {}^{C_i}_I\bar{q}, \; {}^I\mathbf{p}_{C_i} \right\}
+\mathbf{x}_{ext, i} = \left\{ {}^{C_i}\bar{q}_I, \; {}^I\mathbf{p}_{C_i} \right\}
 $$
 对应切空间误差状态：
 $$
-\tilde{\mathbf{x}}_{ext, i} = \begin{bmatrix} {}^{C_i}_I\delta\boldsymbol{\theta}^\top & {}^I\tilde{\mathbf{p}}_{C_i}^\top \end{bmatrix}^\top \in \mathbb{R}^6
+\tilde{\mathbf{x}}_{ext, i} = \begin{bmatrix} {}^{C_i}\delta\boldsymbol{\theta}_I^\top & {}^I\tilde{\mathbf{p}}_{C_i}^\top \end{bmatrix}^\top \in \mathbb{R}^6
 $$
 
 ### 1.1 外参误差在投影方程中的传播推导
 三维路标点在相机系下的坐标表达为：
 $$
-{}^{C_i}\mathbf{p}_f = {}^{C_i}_I\mathbf{R} \left( {}^I\mathbf{p}_f - {}^I\mathbf{p}_{C_i} \right) = {}^{C_i}_I\mathbf{R} {}^I\mathbf{p}_f + {}^C\mathbf{p}_I
+{}^{C_i}\mathbf{p}_f = {}^{C_i}\mathbf{R}_I \left( {}^I\mathbf{p}_f - {}^I\mathbf{p}_{C_i} \right) = {}^{C_i}\mathbf{R}_I {}^I\mathbf{p}_f + {}^{C_i}\mathbf{p}_I
 $$
 在 OpenVINS 源码规范中，外参平移存储为相机在 IMU 系下的平移向量，因此在第 $j$ 个克隆时刻，点坐标为：
 $$
-{}^{C_i}\mathbf{p}_f = {}^{C_i}_I\mathbf{R} \cdot {}^I\mathbf{p}_{f, j} + {}^I\mathbf{p}_{C_i} \quad (\text{具体以代码定义方向为准})
+{}^{C_i}\mathbf{p}_f = {}^{C_i}\mathbf{R}_I \cdot {}^{I_j}\mathbf{p}_f + {}^I\mathbf{p}_{C_i} \quad (\text{具体以代码定义方向为准})
 $$
-对旋转四元数施加左乘扰动 ${}^{C_i}_I\mathbf{R} \approx (\mathbf{I}_3 - \lfloor {}^{C_i}_I\delta\boldsymbol{\theta} \times \rfloor) {}^{C_i}_I\hat{\mathbf{R}}$，对平移施加加性扰动 ${}^I\mathbf{p}_{C_i} = {}^I\hat{\mathbf{p}}_{C_i} + {}^I\tilde{\mathbf{p}}_{C_i}$。
+对旋转四元数施加左乘扰动 ${}^{C_i}\mathbf{R}_I \approx (\mathbf{I}_3 - \lfloor {}^{C_i}\delta\boldsymbol{\theta}_I \times \rfloor) {}^{C_i}\hat{\mathbf{R}}_I$，对平移施加加性扰动 ${}^I\mathbf{p}_{C_i} = {}^I\hat{\mathbf{p}}_{C_i} + {}^I\tilde{\mathbf{p}}_{C_i}$。
 
 ### 1.2 外参雅可比矩阵
 点 ${}^{C_i}\mathbf{p}_f$ 关于外参误差的导数为：
-- 关于外参姿态角误差 ${}^{C_i}_I\delta\boldsymbol{\theta}$：
+- 关于外参姿态角误差 ${}^{C_i}\delta\boldsymbol{\theta}_I$：
   $$
-  \frac{\partial {}^{C_i}\mathbf{p}_f}{\partial {}^{C_i}_I\delta\boldsymbol{\theta}} = \lfloor \left( {}^{C_i}\mathbf{p}_f - {}^I\mathbf{p}_{C_i} \right) \times \rfloor
+  \frac{\partial {}^{C_i}\mathbf{p}_f}{\partial {}^{C_i}\delta\boldsymbol{\theta}_I} = \lfloor \left( {}^{C_i}\mathbf{p}_f - {}^I\mathbf{p}_{C_i} \right) \times \rfloor
   $$
 - 关于外参平移误差 ${}^I\tilde{\mathbf{p}}_{C_i}$：
   $$
@@ -122,7 +122,7 @@ $$
 
 | 标定参数 | 必须具备的几何机动激发条件 | 典型退化运动（不可观场景） |
 |:---|:---|:---|
-| **相机-IMU 外参旋转 ${}^C_I\mathbf{R}$** | 绕至少两个不共线的轴发生充分的角速度转动（Pitch / Roll / Yaw） | 纯直线平移、静止悬停 |
+| **相机-IMU 外参旋转 ${}^C\mathbf{R}_I$** | 绕至少两个不共线的轴发生充分的角速度转动（Pitch / Roll / Yaw） | 纯直线平移、静止悬停 |
 | **相机-IMU 外参平移 ${}^I\mathbf{p}_C$** | 剧烈的旋转伴随线加速度耦合机动（产生可感测的哥氏力与向心力） | 匀速旋转、纯平移运动 |
 | **时间偏移 $t_d$** | 视觉场景存在明显光流，载体具有剧烈角速度变化 | 平台静止、低速匀速巡航 |
 | **IMU 重力敏感度 $\mathbf{T}_g$** | 大机动剧烈加速与大离心力环境 | 常规低动态巡航 |

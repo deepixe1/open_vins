@@ -13,7 +13,7 @@ OpenVINS 提供了两套完备的初始化方案：
 ## 1. VIO 初始化的本质任务与物理量求解
 
 初始化必须准确恢复以下关键物理状态：
-1. **重力对齐旋转矩阵 ${}^I_G\mathbf{R}$**：确定当前机体相对于全局重力矢量的绝对俯仰角（Pitch）与横滚角（Roll）（偏航角 Yaw 在没有磁力计或绝对定位时可任意设为 0）；
+1. **重力对齐旋转矩阵 ${}^I\mathbf{R}_G$**：确定当前机体相对于全局重力矢量的绝对俯仰角（Pitch）与横滚角（Roll）（偏航角 Yaw 在没有磁力计或绝对定位时可任意设为 0）；
 2. **真实三维线速度 ${}^G\mathbf{v}_I$**：静止时为 $\mathbf{0}$，动态初始化时需精准解算；
 3. **传感器初始零偏 $\mathbf{b}_g, \mathbf{b}_a$**：尤其是陀螺仪偏置 $\mathbf{b}_g$，其细微误差会在初始角度积分中迅速发散；
 4. **单目尺度因子 $s$（单目系统必须）**：将纯视觉无尺度几何投影约束缩放到真实米制尺度；
@@ -49,16 +49,16 @@ flowchart TD
 ### 2.2 重力向量提取与姿态对齐
 在静止状态下，由于几何线加速度为零（${}^G\mathbf{a} = \mathbf{0}$），加速度计敏感到的唯有地心引力反作用力（比力）：
 $$
-\mathbf{a}_m \approx -{}^I_G\mathbf{R} {}^G\mathbf{g} + \mathbf{b}_a + \mathbf{w}_a
+\mathbf{a}_m \approx -{}^I\mathbf{R}_G {}^G\mathbf{g} + \mathbf{b}_a + \mathbf{w}_a
 $$
 忽略小微加速度零偏后，加速度计均值矢量为：
 $$
-\bar{\mathbf{a}} = \frac{1}{K}\sum_{k=1}^K \mathbf{a}_k \approx -{}^I_G\mathbf{R} \begin{bmatrix} 0 \\ 0 \\ -g \end{bmatrix} = {}^I_G\mathbf{R} \begin{bmatrix} 0 \\ 0 \\ g \end{bmatrix}
+\bar{\mathbf{a}} = \frac{1}{K}\sum_{k=1}^K \mathbf{a}_k \approx -{}^I\mathbf{R}_G \begin{bmatrix} 0 \\ 0 \\ -g \end{bmatrix} = {}^I\mathbf{R}_G \begin{bmatrix} 0 \\ 0 \\ g \end{bmatrix}
 $$
 设理想全局重力方向为 $\mathbf{g}_{ref} = [0, 0, 1]^\top$，测得的机体引力方向为 $\hat{\mathbf{a}} = \bar{\mathbf{a}} / \|\bar{\mathbf{a}}\|$。
-构造旋转四元数 ${}^I_G\bar{q}$，使其满足：
+构造旋转四元数 ${}^I\bar{q}_G$，使其满足：
 $$
-{}^I_G\mathbf{R} \mathbf{g}_{ref} = \hat{\mathbf{a}}
+{}^I\mathbf{R}_G \mathbf{g}_{ref} = \hat{\mathbf{a}}
 $$
 通过两三维向量叉积求取旋转轴 $\mathbf{n} = \mathbf{g}_{ref} \times \hat{\mathbf{a}}$，点积求取旋转角 $\theta = \arccos(\mathbf{g}_{ref} \cdot \hat{\mathbf{a}})$，构建罗德里格斯四元数即可完成初始水平姿态对齐。
 
@@ -94,7 +94,7 @@ flowchart TD
 ### 3.2 阶段 2：闭式线性求解器 (Linear Closed-form Solver)
 将视觉恢复的相对平移与 IMU 预积分位移方程联立：
 $$
-s \cdot {}^C\mathbf{p}_{C_j} = {}^C_I\mathbf{R} \left( {}^I_j\mathbf{R} \left( {}^G\mathbf{p}_i + {}^G\mathbf{v}_i \Delta t_{ij} + \frac{1}{2}{}^G\mathbf{g}\Delta t_{ij}^2 - {}^G\mathbf{p}_j \right) \right)
+s \cdot {}^{C_i}\mathbf{p}_{C_j} = {}^C\mathbf{R}_I \left( {}^{I_j}\mathbf{R}_G \left( {}^G\mathbf{p}_i + {}^G\mathbf{v}_i \Delta t_{ij} + \frac{1}{2}{}^G\mathbf{g}\Delta t_{ij}^2 - {}^G\mathbf{p}_j \right) \right)
 $$
 式中待求解的未知量为：
 - 单目未知尺度因子 $s$；

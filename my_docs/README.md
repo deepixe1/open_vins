@@ -117,13 +117,13 @@ flowchart TD
    - $\{C\}$：相机传感器自身光学坐标系（Camera Frame），$z$ 轴指向镜头前方正方向。
    - $\{I_k\}$：第 $k$ 个图像曝光时刻 IMU 的坐标系（Clone Frame）。
 2. **位姿表示**：
-   - ${}^I_G\bar{q}$：从全局系 $\{G\}$ 到 IMU 系 $\{I\}$ 的旋转四元数（JPL 约定）。
-   - ${}^I_G\mathbf{R}$：对应的 $3\times 3$ 方向余弦旋转矩阵，满足 ${}^I\mathbf{p} = {}^I_G\mathbf{R} ({}^G\mathbf{p} - {}^G\mathbf{p}_I)$。
+   - ${}^I\bar{q}_G$：从全局系 $\{G\}$ 到 IMU 系 $\{I\}$ 的旋转四元数（JPL 约定）。
+   - ${}^I\mathbf{R}_G$：对应的 $3\times 3$ 方向余弦旋转矩阵，满足 ${}^I\mathbf{p} = {}^I\mathbf{R}_G ({}^G\mathbf{p} - {}^G\mathbf{p}_I)$。
    - ${}^G\mathbf{p}_I$：IMU 在全局系 $\{G\}$ 中的三维平移位置。
    - ${}^G\mathbf{v}_I$：IMU 在全局系 $\{G\}$ 中的三维线速度。
 3. **误差定义与流形扰动**：
    - 真值 = 估计值 $\boxplus$ 误差：$\mathbf{x} = \hat{\mathbf{x}} \boxplus \tilde{\mathbf{x}}$。
-   - 四元数误差（JPL 左乘扰动）：${}^I_G\bar{q} \approx \begin{bmatrix} \frac{1}{2} \delta\boldsymbol{\theta} \\ 1 \end{bmatrix} \otimes {}^I_G\hat{\bar{q}}$，对应的旋转矩阵为 ${}^I_G\mathbf{R} \approx (\mathbf{I}_3 - \lfloor \delta\boldsymbol{\theta} \times \rfloor) {}^I_G\hat{\mathbf{R}}$。
+   - 四元数误差（JPL 左乘扰动）：${}^I\bar{q}_G \approx \begin{bmatrix} \frac{1}{2} \delta\boldsymbol{\theta} \\ 1 \end{bmatrix} \otimes {}^I\hat{\bar{q}}_G$，对应的旋转矩阵为 ${}^I\mathbf{R}_G \approx (\mathbf{I}_3 - \lfloor \delta\boldsymbol{\theta} \times \rfloor) {}^I\hat{\mathbf{R}}_G$。
    - 向量加性误差：$\mathbf{p} = \hat{\mathbf{p}} + \tilde{\mathbf{p}}$。
 4. **反对称矩阵算子**：
    - $\lfloor \boldsymbol{\omega} \times \rfloor$ 或 $\lfloor \mathbf{v} \times \rfloor$ 表示向量 $\mathbf{v} = [v_1, v_2, v_3]^\top$ 诱导的反对称矩阵：
