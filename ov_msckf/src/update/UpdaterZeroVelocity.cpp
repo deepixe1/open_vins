@@ -64,12 +64,6 @@ UpdaterZeroVelocity::UpdaterZeroVelocity(UpdaterOptions &options, NoiseManager &
 
 bool UpdaterZeroVelocity::try_update(std::shared_ptr<State> state, double timestamp) {
 
-  // Return if we don't have any imu data yet
-  if (imu_data.empty()) {
-    last_zupt_state_timestamp = 0.0;
-    return false;
-  }
-
   // Return if the state is already at the desired time
   if (state->_timestamp == timestamp) {
     last_zupt_state_timestamp = 0.0;
@@ -94,7 +88,15 @@ bool UpdaterZeroVelocity::try_update(std::shared_ptr<State> state, double timest
   double time1 = timestamp + t_off_new;
 
   // Select bounding inertial measurements
-  std::vector<ov_core::ImuData> imu_recent = Propagator::select_imu_readings(imu_data, time0, time1);
+  std::vector<ov_core::ImuData> imu_recent;
+  {
+    std::lock_guard<std::mutex> lck(imu_data_mtx);
+    if (imu_data.empty()) {
+      last_zupt_state_timestamp = 0.0;
+      return false;
+    }
+    imu_recent = Propagator::select_imu_readings(imu_data, time0, time1);
+  }
 
   // Move forward in time
   last_prop_time_offset = t_off_new;

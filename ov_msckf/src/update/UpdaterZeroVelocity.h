@@ -23,6 +23,7 @@
 #define OV_MSCKF_UPDATER_ZEROVELOCITY_H
 
 #include <memory>
+#include <mutex>
 
 #include "utils/sensor_data.h"
 
@@ -77,7 +78,10 @@ public:
   void feed_imu(const ov_core::ImuData &message, double oldest_time = -1) {
 
     // Append it to our vector
-    imu_data.emplace_back(message);
+    {
+      std::lock_guard<std::mutex> lck(imu_data_mtx);
+      imu_data.emplace_back(message);
+    }
 
     // Sort our imu data (handles any out of order measurements)
     // std::sort(imu_data.begin(), imu_data.end(), [](const IMUDATA i, const IMUDATA j) {
@@ -96,6 +100,7 @@ public:
   void clean_old_imu_measurements(double oldest_time) {
     if (oldest_time < 0)
       return;
+    std::lock_guard<std::mutex> lck(imu_data_mtx);
     auto it0 = imu_data.begin();
     while (it0 != imu_data.end()) {
       if (it0->timestamp < oldest_time) {
@@ -144,6 +149,7 @@ protected:
 
   /// Our history of IMU messages (time, angular, linear)
   std::vector<ov_core::ImuData> imu_data;
+  std::mutex imu_data_mtx;
 
   /// Estimate for time offset at last propagation time
   double last_prop_time_offset = 0.0;

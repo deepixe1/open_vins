@@ -35,13 +35,6 @@
 
 using namespace ov_msckf;
 
-std::shared_ptr<VioManager> sys;
-#if ROS_AVAILABLE == 1
-std::shared_ptr<ROS1Visualizer> viz;
-#elif ROS_AVAILABLE == 2
-std::shared_ptr<ROS2Visualizer> viz;
-#endif
-
 // Main function
 int main(int argc, char **argv) {
 
@@ -83,12 +76,12 @@ int main(int argc, char **argv) {
   VioManagerOptions params;
   params.print_and_load(parser);
   params.use_multi_threading_subs = true;
-  sys = std::make_shared<VioManager>(params);
+  auto sys = std::make_shared<VioManager>(params);
 #if ROS_AVAILABLE == 1
-  viz = std::make_shared<ROS1Visualizer>(nh, sys);
+  auto viz = std::make_shared<ROS1Visualizer>(nh, sys);
   viz->setup_subscribers(parser);
 #elif ROS_AVAILABLE == 2
-  viz = std::make_shared<ROS2Visualizer>(node, sys);
+  auto viz = std::make_shared<ROS2Visualizer>(node, sys);
   viz->setup_subscribers(parser);
 #endif
 

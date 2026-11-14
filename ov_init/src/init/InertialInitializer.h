@@ -22,6 +22,8 @@
 #ifndef OV_INIT_INERTIALINITIALIZER_H
 #define OV_INIT_INERTIALINITIALIZER_H
 
+#include <mutex>
+
 #include "init/InertialInitializerOptions.h"
 
 namespace ov_core {
@@ -106,12 +108,7 @@ protected:
 
   /// Our history of IMU messages (time, angular, linear)
   std::shared_ptr<std::vector<ov_core::ImuData>> imu_data;
-
-  /// Static initialization helper class
-  std::shared_ptr<StaticInitializer> init_static;
-
-  /// Dynamic initialization helper class
-  std::shared_ptr<DynamicInitializer> init_dynamic;
+  std::mutex imu_data_mtx;
 };
 
 } // namespace ov_init

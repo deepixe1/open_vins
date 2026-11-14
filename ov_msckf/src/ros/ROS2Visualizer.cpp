@@ -35,50 +35,55 @@ using namespace ov_core;
 using namespace ov_type;
 using namespace ov_msckf;
 
+constexpr size_t kMaxCameraQueueSize = 3;
+
 ROS2Visualizer::ROS2Visualizer(std::shared_ptr<rclcpp::Node> node, std::shared_ptr<VioManager> app, std::shared_ptr<Simulator> sim)
     : _node(node), _app(app), _sim(sim), thread_update_running(false) {
 
-  // Setup our transform broadcaster
+  // Keep the standard TF QoS expected by transform listeners.
   mTfBr = std::make_shared<tf2_ros::TransformBroadcaster>(node);
 
   // Create image transport
   image_transport::ImageTransport it(node);
 
+  // Visualization keeps only the latest message and allows dropped frames.
+  const auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
+
   // Setup pose and path publisher
-  pub_poseimu = node->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("poseimu", 2);
+  pub_poseimu = node->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("poseimu", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_poseimu->get_topic_name());
-  pub_odomimu = node->create_publisher<nav_msgs::msg::Odometry>("odomimu", 2);
+  pub_odomimu = node->create_publisher<nav_msgs::msg::Odometry>("odomimu", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_odomimu->get_topic_name());
-  pub_pathimu = node->create_publisher<nav_msgs::msg::Path>("pathimu", 2);
+  pub_pathimu = node->create_publisher<nav_msgs::msg::Path>("pathimu", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_pathimu->get_topic_name());
 
   // 3D points publishing
-  pub_points_msckf = node->create_publisher<sensor_msgs::msg::PointCloud2>("points_msckf", 2);
+  pub_points_msckf = node->create_publisher<sensor_msgs::msg::PointCloud2>("points_msckf", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_points_msckf->get_topic_name());
-  pub_points_slam = node->create_publisher<sensor_msgs::msg::PointCloud2>("points_slam", 2);
+  pub_points_slam = node->create_publisher<sensor_msgs::msg::PointCloud2>("points_slam", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_points_msckf->get_topic_name());
-  pub_points_aruco = node->create_publisher<sensor_msgs::msg::PointCloud2>("points_aruco", 2);
+  pub_points_aruco = node->create_publisher<sensor_msgs::msg::PointCloud2>("points_aruco", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_points_aruco->get_topic_name());
-  pub_points_sim = node->create_publisher<sensor_msgs::msg::PointCloud2>("points_sim", 2);
+  pub_points_sim = node->create_publisher<sensor_msgs::msg::PointCloud2>("points_sim", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_points_sim->get_topic_name());
 
   // Our tracking image
-  it_pub_tracks = it.advertise("trackhist", 2);
+  it_pub_tracks = it.advertise("trackhist", qos.get_rmw_qos_profile());
   PRINT_DEBUG("Publishing: %s\n", it_pub_tracks.getTopic().c_str());
 
   // Groundtruth publishers
-  pub_posegt = node->create_publisher<geometry_msgs::msg::PoseStamped>("posegt", 2);
+  pub_posegt = node->create_publisher<geometry_msgs::msg::PoseStamped>("posegt", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_posegt->get_topic_name());
-  pub_pathgt = node->create_publisher<nav_msgs::msg::Path>("pathgt", 2);
+  pub_pathgt = node->create_publisher<nav_msgs::msg::Path>("pathgt", qos);
   PRINT_DEBUG("Publishing: %s\n", pub_pathgt->get_topic_name());
 
   // Loop closure publishers
-  pub_loop_pose = node->create_publisher<nav_msgs::msg::Odometry>("loop_pose", 2);
-  pub_loop_point = node->create_publisher<sensor_msgs::msg::PointCloud>("loop_feats", 2);
-  pub_loop_extrinsic = node->create_publisher<nav_msgs::msg::Odometry>("loop_extrinsic", 2);
-  pub_loop_intrinsics = node->create_publisher<sensor_msgs::msg::CameraInfo>("loop_intrinsics", 2);
-  it_pub_loop_img_depth = it.advertise("loop_depth", 2);
-  it_pub_loop_img_depth_color = it.advertise("loop_depth_colored", 2);
+  pub_loop_pose = node->create_publisher<nav_msgs::msg::Odometry>("loop_pose", qos);
+  pub_loop_point = node->create_publisher<sensor_msgs::msg::PointCloud>("loop_feats", qos);
+  pub_loop_extrinsic = node->create_publisher<nav_msgs::msg::Odometry>("loop_extrinsic", qos);
+  pub_loop_intrinsics = node->create_publisher<sensor_msgs::msg::CameraInfo>("loop_intrinsics", qos);
+  it_pub_loop_img_depth = it.advertise("loop_depth", qos.get_rmw_qos_profile());
+  it_pub_loop_img_depth_color = it.advertise("loop_depth_colored", qos.get_rmw_qos_profile());
 
   // option to enable publishing of global to IMU transformation
   if (node->has_parameter("publish_global_to_imu_tf")) {
@@ -170,8 +175,11 @@ void ROS2Visualizer::setup_subscribers(std::shared_ptr<ov_core::YamlParser> pars
   _node->declare_parameter<std::string>("topic_imu", "/imu0");
   _node->get_parameter("topic_imu", topic_imu);
   parser->parse_external("relative_config_imu", "imu0", "rostopic", topic_imu);
-  sub_imu = _node->create_subscription<sensor_msgs::msg::Imu>(topic_imu, rclcpp::SensorDataQoS(),
-                                                              std::bind(&ROS2Visualizer::callback_inertial, this, std::placeholders::_1));
+  callback_group_imu = _node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions imu_options;
+  imu_options.callback_group = callback_group_imu;
+  sub_imu = _node->create_subscription<sensor_msgs::msg::Imu>(
+      topic_imu, rclcpp::SensorDataQoS(), std::bind(&ROS2Visualizer::callback_inertial, this, std::placeholders::_1), imu_options);
   PRINT_INFO("subscribing to IMU: %s\n", topic_imu.c_str());
 
   // Logic for sync stereo subscriber
@@ -452,36 +460,44 @@ void ROS2Visualizer::callback_inertial(const sensor_msgs::msg::Imu::SharedPtr ms
   // The visualization of the state, images, and features will be synchronous with the update!
   if (thread_update_running)
     return;
-  thread_update_running = true;
-  std::thread thread([&] {
-    // Lock on the queue (prevents new images from appending)
+  {
     std::lock_guard<std::mutex> lck(camera_queue_mtx);
+    if (camera_queue.empty())
+      return;
+  }
+  thread_update_running = true;
+  std::thread thread([this, timestamp = message.timestamp] {
+    std::deque<ov_core::CameraData> camera_measurements;
+    double timestamp_imu_inC = timestamp - _app->get_state()->_calib_dt_CAMtoIMU->value()(0);
+    {
+      // Only hold the queue lock while taking measurements, not during processing.
+      std::lock_guard<std::mutex> lck(camera_queue_mtx);
 
-    // Count how many unique image streams
-    std::map<int, bool> unique_cam_ids;
-    for (const auto &cam_msg : camera_queue) {
-      unique_cam_ids[cam_msg.sensor_ids.at(0)] = true;
+      // Count how many unique image streams
+      std::map<int, bool> unique_cam_ids;
+      for (const auto &cam_msg : camera_queue) {
+        unique_cam_ids[cam_msg.sensor_ids.at(0)] = true;
+      }
+
+      // Wait for all camera streams before taking measurements with an older timestamp than the IMU.
+      auto params = _app->get_params();
+      size_t num_unique_cameras = (params.state_options.num_cameras == 2) ? 1 : params.state_options.num_cameras;
+      if (unique_cam_ids.size() == num_unique_cameras) {
+        while (!camera_queue.empty() && camera_queue.front().timestamp < timestamp_imu_inC) {
+          camera_measurements.push_back(std::move(camera_queue.front()));
+          camera_queue.pop_front();
+        }
+      }
     }
 
-    // If we do not have enough unique cameras then we need to wait
-    // We should wait till we have one of each camera to ensure we propagate in the correct order
-    auto params = _app->get_params();
-    size_t num_unique_cameras = (params.state_options.num_cameras == 2) ? 1 : params.state_options.num_cameras;
-    if (unique_cam_ids.size() == num_unique_cameras) {
-
-      // Loop through our queue and see if we are able to process any of our camera measurements
-      // We are able to process if we have at least one IMU measurement greater than the camera time
-      double timestamp_imu_inC = message.timestamp - _app->get_state()->_calib_dt_CAMtoIMU->value()(0);
-      while (!camera_queue.empty() && camera_queue.at(0).timestamp < timestamp_imu_inC) {
-        auto rT0_1 = boost::posix_time::microsec_clock::local_time();
-        double update_dt = 100.0 * (timestamp_imu_inC - camera_queue.at(0).timestamp);
-        _app->feed_measurement_camera(camera_queue.at(0));
-        visualize();
-        camera_queue.pop_front();
-        auto rT0_2 = boost::posix_time::microsec_clock::local_time();
-        double time_total = (rT0_2 - rT0_1).total_microseconds() * 1e-6;
-        PRINT_INFO(BLUE "[TIME]: %.4f seconds total (%.1f hz, %.2f ms behind)\n" RESET, time_total, 1.0 / time_total, update_dt);
-      }
+    for (const auto &cam_msg : camera_measurements) {
+      auto rT0_1 = boost::posix_time::microsec_clock::local_time();
+      double update_dt = 1000.0 * (timestamp_imu_inC - cam_msg.timestamp);
+      _app->feed_measurement_camera(cam_msg);
+      visualize();
+      auto rT0_2 = boost::posix_time::microsec_clock::local_time();
+      double time_total = (rT0_2 - rT0_1).total_microseconds() * 1e-6;
+      PRINT_INFO(BLUE "[TIME]: %.4f seconds total (%.1f hz, %.2f ms behind)\n" RESET, time_total, 1.0 / time_total, update_dt);
     }
     thread_update_running = false;
   });
@@ -530,8 +546,10 @@ void ROS2Visualizer::callback_monocular(const sensor_msgs::msg::Image::SharedPtr
 
   // append it to our queue of images
   std::lock_guard<std::mutex> lck(camera_queue_mtx);
-  camera_queue.push_back(message);
+  camera_queue.push_back(std::move(message));
   std::sort(camera_queue.begin(), camera_queue.end());
+  if (camera_queue.size() > kMaxCameraQueueSize)
+    camera_queue.pop_front();
 }
 
 void ROS2Visualizer::callback_stereo(const sensor_msgs::msg::Image::ConstSharedPtr msg0, const sensor_msgs::msg::Image::ConstSharedPtr msg1,
@@ -584,8 +602,10 @@ void ROS2Visualizer::callback_stereo(const sensor_msgs::msg::Image::ConstSharedP
 
   // append it to our queue of images
   std::lock_guard<std::mutex> lck(camera_queue_mtx);
-  camera_queue.push_back(message);
+  camera_queue.push_back(std::move(message));
   std::sort(camera_queue.begin(), camera_queue.end());
+  if (camera_queue.size() > kMaxCameraQueueSize)
+    camera_queue.pop_front();
 }
 
 void ROS2Visualizer::publish_state() {

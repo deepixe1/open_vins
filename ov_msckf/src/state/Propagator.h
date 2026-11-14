@@ -65,8 +65,10 @@ public:
   void feed_imu(const ov_core::ImuData &message, double oldest_time = -1) {
 
     // Append it to our vector
-    std::lock_guard<std::mutex> lck(imu_data_mtx);
-    imu_data.emplace_back(message);
+    {
+      std::lock_guard<std::mutex> lck(imu_data_mtx);
+      imu_data.emplace_back(message);
+    }
 
     // Clean old measurements
     // std::cout << "PROP: imu_data.size() " << imu_data.size() << std::endl;
@@ -80,6 +82,7 @@ public:
   void clean_old_imu_measurements(double oldest_time) {
     if (oldest_time < 0)
       return;
+    std::lock_guard<std::mutex> lck(imu_data_mtx);
     auto it0 = imu_data.begin();
     while (it0 != imu_data.end()) {
       if (it0->timestamp < oldest_time) {
