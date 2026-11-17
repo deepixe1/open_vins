@@ -46,6 +46,7 @@
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <memory>
 #include <mutex>
@@ -195,6 +196,7 @@ protected:
   // Last timestamp we visualized at
   double last_visualization_timestamp = 0;
   double last_visualization_timestamp_image = 0;
+  std::chrono::steady_clock::time_point last_depth_color_publish{};
 
   // Our groundtruth states
   std::map<double, Eigen::Matrix<double, 17, 1>> gt_states;

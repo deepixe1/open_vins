@@ -178,9 +178,13 @@ void ROS2Visualizer::setup_subscribers(std::shared_ptr<ov_core::YamlParser> pars
   callback_group_imu = _node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions imu_options;
   imu_options.callback_group = callback_group_imu;
+  // Buffer brief scheduling pauses at 1 kHz instead of using the sensor-data default of five samples.
   sub_imu = _node->create_subscription<sensor_msgs::msg::Imu>(
-      topic_imu, rclcpp::SensorDataQoS(), std::bind(&ROS2Visualizer::callback_inertial, this, std::placeholders::_1), imu_options);
+      topic_imu, rclcpp::SensorDataQoS().keep_last(200),
+      std::bind(&ROS2Visualizer::callback_inertial, this, std::placeholders::_1), imu_options);
   PRINT_INFO("subscribing to IMU: %s\n", topic_imu.c_str());
+
+  const auto camera_qos = rclcpp::SensorDataQoS().keep_last(3);
 
   // Logic for sync stereo subscriber
   // https://answers.ros.org/question/96346/subscribe-to-two-image_raws-with-one-function/?answer=96491#post-id-96491
@@ -194,8 +198,10 @@ void ROS2Visualizer::setup_subscribers(std::shared_ptr<ov_core::YamlParser> pars
     parser->parse_external("relative_config_imucam", "cam" + std::to_string(0), "rostopic", cam_topic0);
     parser->parse_external("relative_config_imucam", "cam" + std::to_string(1), "rostopic", cam_topic1);
     // Create sync filter (they have unique pointers internally, so we have to use move logic here...)
-    auto image_sub0 = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(_node, cam_topic0);
-    auto image_sub1 = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(_node, cam_topic1);
+    auto image_sub0 = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+        _node, cam_topic0, camera_qos.get_rmw_qos_profile());
+    auto image_sub1 = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+        _node, cam_topic1, camera_qos.get_rmw_qos_profile());
     auto sync = std::make_shared<message_filters::Synchronizer<sync_pol>>(sync_pol(10), *image_sub0, *image_sub1);
     sync->registerCallback(std::bind(&ROS2Visualizer::callback_stereo, this, std::placeholders::_1, std::placeholders::_2, 0, 1));
     // sync->registerCallback([](const sensor_msgs::msg::Image::SharedPtr msg0, const sensor_msgs::msg::Image::SharedPtr msg1)
@@ -216,10 +222,8 @@ void ROS2Visualizer::setup_subscribers(std::shared_ptr<ov_core::YamlParser> pars
       _node->get_parameter("topic_camera" + std::to_string(i), cam_topic);
       parser->parse_external("relative_config_imucam", "cam" + std::to_string(i), "rostopic", cam_topic);
       // create subscriber
-      // auto sub = _node->create_subscription<sensor_msgs::msg::Image>(
-      //    cam_topic, rclcpp::SensorDataQoS(), std::bind(&ROS2Visualizer::callback_monocular, this, std::placeholders::_1, i));
       auto sub = _node->create_subscription<sensor_msgs::msg::Image>(
-          cam_topic, 10, [this, i](const sensor_msgs::msg::Image::SharedPtr msg0) { callback_monocular(msg0, i); });
+          cam_topic, camera_qos, [this, i](const sensor_msgs::msg::Image::SharedPtr msg0) { callback_monocular(msg0, i); });
       subs_cam.push_back(sub);
       PRINT_INFO("subscribing to cam (mono): %s\n", cam_topic.c_str());
     }
@@ -958,11 +962,18 @@ void ROS2Visualizer::publish_loopclosure_information() {
 
   //======================================================
   // Depth images of sparse points and its colorized version
-  if (it_pub_loop_img_depth.getNumSubscribers() != 0 || it_pub_loop_img_depth_color.getNumSubscribers() != 0) {
+  const auto now = std::chrono::steady_clock::now();
+  const bool publish_depth = it_pub_loop_img_depth.getNumSubscribers() != 0;
+  // Limit only the color visualization to 5 Hz, independently of sensor or simulation time.
+  const bool publish_color = it_pub_loop_img_depth_color.getNumSubscribers() != 0 &&
+                             std::chrono::duration<double>(now - last_depth_color_publish).count() >= 0.2;
+  if (publish_depth || publish_color) {
 
     // Create the images we will populate with the depths
     std::pair<int, int> wh_pair = {active_cam0_image.cols, active_cam0_image.rows};
-    cv::Mat depthmap = cv::Mat::zeros(wh_pair.second, wh_pair.first, CV_16UC1);
+    cv::Mat depthmap;
+    if (publish_depth)
+      depthmap = cv::Mat::zeros(wh_pair.second, wh_pair.first, CV_16UC1);
     cv::Mat depthmap_viz = active_cam0_image;
 
     // Loop through all points and append
@@ -981,7 +992,11 @@ void ROS2Visualizer::publish_loopclosure_information() {
       // Append the depth
       // NOTE: scaled by 1000 to fit the 16U
       // NOTE: access order is y,x (stupid opencv convention stuff)
-      depthmap.at<uint16_t>((int)uvd(1), (int)uvd(0)) = (uint16_t)(1000 * uvd(2));
+      if (publish_depth)
+        depthmap.at<uint16_t>((int)uvd(1), (int)uvd(0)) = (uint16_t)(1000 * uvd(2));
+
+      if (!publish_color)
+        continue;
 
       // Taken from LSD-SLAM codebase segment into 0-4 meter segments:
       // https://github.com/tum-vision/lsd_slam/blob/d1e6f0e1a027889985d2e6b4c0fe7a90b0c75067/lsd_slam_core/src/util/globalFuncs.cpp#L87-L96
@@ -1008,12 +1023,16 @@ void ROS2Visualizer::publish_loopclosure_information() {
 
     // Create our messages
     header.frame_id = "cam0";
-    sensor_msgs::msg::Image::SharedPtr exl_msg1 =
-        cv_bridge::CvImage(header, sensor_msgs::image_encodings::TYPE_16UC1, depthmap).toImageMsg();
-    it_pub_loop_img_depth.publish(exl_msg1);
-    header.stamp = _node->now();
-    header.frame_id = "cam0";
-    sensor_msgs::msg::Image::SharedPtr exl_msg2 = cv_bridge::CvImage(header, "bgr8", depthmap_viz).toImageMsg();
-    it_pub_loop_img_depth_color.publish(exl_msg2);
+    if (publish_depth) {
+      sensor_msgs::msg::Image::SharedPtr exl_msg1 =
+          cv_bridge::CvImage(header, sensor_msgs::image_encodings::TYPE_16UC1, depthmap).toImageMsg();
+      it_pub_loop_img_depth.publish(exl_msg1);
+    }
+    if (publish_color) {
+      header.stamp = _node->now();
+      sensor_msgs::msg::Image::SharedPtr exl_msg2 = cv_bridge::CvImage(header, "bgr8", depthmap_viz).toImageMsg();
+      it_pub_loop_img_depth_color.publish(exl_msg2);
+      last_depth_color_publish = now;
+    }
   }
 }
