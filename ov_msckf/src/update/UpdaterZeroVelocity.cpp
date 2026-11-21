@@ -21,6 +21,8 @@
 
 #include "UpdaterZeroVelocity.h"
 
+#include <algorithm>
+
 #include "UpdaterHelper.h"
 
 #include "feat/FeatureDatabase.h"
@@ -41,9 +43,10 @@ using namespace ov_msckf;
 
 UpdaterZeroVelocity::UpdaterZeroVelocity(UpdaterOptions &options, NoiseManager &noises, std::shared_ptr<ov_core::FeatureDatabase> db,
                                          std::shared_ptr<Propagator> prop, double gravity_mag, double zupt_max_velocity,
-                                         double zupt_noise_multiplier, double zupt_max_disparity)
+                                         double zupt_noise_multiplier, double zupt_max_disparity, double zupt_stationary_duration)
     : _options(options), _noises(noises), _db(db), _prop(prop), _zupt_max_velocity(zupt_max_velocity),
-      _zupt_noise_multiplier(zupt_noise_multiplier), _zupt_max_disparity(zupt_max_disparity) {
+      _zupt_noise_multiplier(zupt_noise_multiplier), _zupt_max_disparity(zupt_max_disparity),
+      _zupt_stationary_duration(zupt_stationary_duration) {
 
   // Gravity
   _gravity << 0.0, 0.0, gravity_mag;
@@ -60,6 +63,55 @@ UpdaterZeroVelocity::UpdaterZeroVelocity(UpdaterOptions &options, NoiseManager &
     boost::math::chi_squared chi_squared_dist(i);
     chi_squared_table[i] = boost::math::quantile(chi_squared_dist, 0.95);
   }
+}
+
+bool UpdaterZeroVelocity::detect_stationary(double previous, double timestamp, const std::vector<ImuData> &imu_recent) {
+  const double interval = timestamp - previous;
+  const double gravity = _gravity.norm();
+  // Reject impact and rotation from the raw samples, independently of the filter's velocity and biases.
+  const double imu_span = imu_recent.back().timestamp - imu_recent.front().timestamp;
+  if (interval <= 0.0 || interval > 0.15 || imu_span < 0.9 * interval ||
+      std::any_of(imu_recent.begin(), imu_recent.end(), [gravity](const ImuData &sample) {
+        return !(sample.am.norm() < 2.0 * gravity && sample.wm.norm() < 0.3);
+      })) {
+    stationary_since = -1.0;
+    return false;
+  }
+
+  Eigen::Vector3d mean_acceleration = Eigen::Vector3d::Zero();
+  Eigen::Vector3d mean_angular_velocity = Eigen::Vector3d::Zero();
+  for (size_t i = 1; i < imu_recent.size(); ++i) {
+    const auto &start = imu_recent[i - 1];
+    const auto &end = imu_recent[i];
+    const double dt = end.timestamp - start.timestamp;
+    mean_acceleration += 0.5 * dt * (start.am + end.am);
+    mean_angular_velocity += 0.5 * dt * (start.wm + end.wm);
+  }
+  const auto small_disparity = [&](double start) {
+    double mean, stddev;
+    int tracks;
+    FeatureHelper::compute_disparity(_db, start, timestamp, mean, stddev, tracks);
+    return tracks > 20 && mean < _zupt_max_disparity;
+  };
+  if (!(std::abs(mean_acceleration.norm() / imu_span - gravity) < 0.75 &&
+        mean_angular_velocity.norm() / imu_span < 0.035 && small_disparity(previous))) {
+    stationary_since = -1.0;
+    return false;
+  }
+
+  if (stationary_since < 0.0) {
+    stationary_since = previous;
+  }
+  if (timestamp - stationary_since < _zupt_stationary_duration) {
+    return last_zupt_count > 0;
+  }
+  // Check a longer baseline both on entry and while stationary to catch slow, sustained motion.
+  const bool stationary = small_disparity(stationary_since);
+  if (last_zupt_count > 0) {
+    _db->cleanup_measurements_exact(stationary_since);
+  }
+  stationary_since = stationary ? timestamp : previous;
+  return stationary;
 }
 
 bool UpdaterZeroVelocity::try_update(std::shared_ptr<State> state, double timestamp) {
@@ -105,6 +157,15 @@ bool UpdaterZeroVelocity::try_update(std::shared_ptr<State> state, double timest
   if (imu_recent.size() < 2) {
     PRINT_WARNING(RED "[ZUPT]: There are no IMU data to check for zero velocity with!!\n" RESET);
     last_zupt_state_timestamp = 0.0;
+    last_zupt_count = 0;
+    stationary_since = -1.0;
+    return false;
+  }
+
+  const bool explicit_velocity_update = _zupt_stationary_duration > 0.0;
+  if (explicit_velocity_update && !detect_stationary(state->_timestamp, timestamp, imu_recent)) {
+    last_zupt_state_timestamp = 0.0;
+    last_zupt_count = 0;
     return false;
   }
 
@@ -197,65 +258,70 @@ bool UpdaterZeroVelocity::try_update(std::shared_ptr<State> state, double timest
   Q_bias.block(0, 0, 3, 3) *= dt_summed * _noises.sigma_wb_2;
   Q_bias.block(3, 3, 3, 3) *= dt_summed * _noises.sigma_ab_2;
 
-  // Chi2 distance check
-  // NOTE: we also append the propagation we "would do before the update" if this was to be accepted (just the bias evolution)
-  // NOTE: we don't propagate first since if we fail the chi2 then we just want to return and do normal logic
-  Eigen::MatrixXd P_marg = StateHelper::get_marginal_covariance(state, Hx_order);
-  if (model_time_varying_bias) {
-    P_marg.block(3, 3, 6, 6) += Q_bias;
-  }
-  Eigen::MatrixXd S = H * P_marg * H.transpose() + R;
-  double chi2 = res.dot(S.llt().solve(res));
-
-  // Get our threshold (we precompute up to 1000 but handle the case that it is more)
-  double chi2_check;
-  if (res.rows() < 1000) {
-    chi2_check = chi_squared_table[res.rows()];
-  } else {
-    boost::math::chi_squared chi_squared_dist(res.rows());
-    chi2_check = boost::math::quantile(chi_squared_dist, 0.95);
-    PRINT_WARNING(YELLOW "[ZUPT]: chi2_check over the residual limit - %d\n" RESET, (int)res.rows());
-  }
-
-  // Check if the image disparity
-  bool disparity_passed = false;
-  if (override_with_disparity_check) {
-
-    // Get the disparity statistics from this image to the previous
-    double time0_cam = state->_timestamp;
-    double time1_cam = timestamp;
-    int num_features = 0;
-    double disp_avg = 0.0;
-    double disp_var = 0.0;
-    FeatureHelper::compute_disparity(_db, time0_cam, time1_cam, disp_avg, disp_var, num_features);
-
-    // Check if this disparity is enough to be classified as moving
-    disparity_passed = (disp_avg < _zupt_max_disparity && num_features > 20);
-    if (disparity_passed) {
-      PRINT_INFO(CYAN "[ZUPT]: passed disparity (%.3f < %.3f, %d features)\n" RESET, disp_avg, _zupt_max_disparity, (int)num_features);
-    } else {
-      PRINT_DEBUG(YELLOW "[ZUPT]: failed disparity (%.3f > %.3f, %d features)\n" RESET, disp_avg, _zupt_max_disparity, (int)num_features);
+  if (!explicit_velocity_update) {
+    // Chi2 distance check
+    // NOTE: we also append the propagation we "would do before the update" if this was to be accepted (just the bias evolution)
+    // NOTE: we don't propagate first since if we fail the chi2 then we just want to return and do normal logic
+    Eigen::MatrixXd P_marg = StateHelper::get_marginal_covariance(state, Hx_order);
+    if (model_time_varying_bias) {
+      P_marg.block(3, 3, 6, 6) += Q_bias;
     }
-  }
+    Eigen::MatrixXd S = H * P_marg * H.transpose() + R;
+    double chi2 = res.dot(S.llt().solve(res));
 
-  // Check if we are currently zero velocity
-  // We need to pass the chi2 and not be above our velocity threshold
-  if (!disparity_passed && (chi2 > _options.chi2_multipler * chi2_check || state->_imu->vel().norm() > _zupt_max_velocity)) {
-    last_zupt_state_timestamp = 0.0;
-    last_zupt_count = 0;
-    PRINT_DEBUG(YELLOW "[ZUPT]: rejected |v_IinG| = %.3f (chi2 %.3f > %.3f)\n" RESET, state->_imu->vel().norm(), chi2,
-                _options.chi2_multipler * chi2_check);
-    return false;
+    // Get our threshold (we precompute up to 1000 but handle the case that it is more)
+    double chi2_check;
+    if (res.rows() < 1000) {
+      chi2_check = chi_squared_table[res.rows()];
+    } else {
+      boost::math::chi_squared chi_squared_dist(res.rows());
+      chi2_check = boost::math::quantile(chi_squared_dist, 0.95);
+      PRINT_WARNING(YELLOW "[ZUPT]: chi2_check over the residual limit - %d\n" RESET, (int)res.rows());
+    }
+
+    // Check if the image disparity
+    bool disparity_passed = false;
+    if (override_with_disparity_check) {
+
+      // Get the disparity statistics from this image to the previous
+      double time0_cam = state->_timestamp;
+      double time1_cam = timestamp;
+      int num_features = 0;
+      double disp_avg = 0.0;
+      double disp_var = 0.0;
+      FeatureHelper::compute_disparity(_db, time0_cam, time1_cam, disp_avg, disp_var, num_features);
+
+      // Check if this disparity is enough to be classified as moving
+      disparity_passed = (disp_avg < _zupt_max_disparity && num_features > 20);
+      if (disparity_passed) {
+        PRINT_INFO(CYAN "[ZUPT]: passed disparity (%.3f < %.3f, %d features)\n" RESET, disp_avg, _zupt_max_disparity, (int)num_features);
+      } else {
+        PRINT_DEBUG(YELLOW "[ZUPT]: failed disparity (%.3f > %.3f, %d features)\n" RESET, disp_avg, _zupt_max_disparity, (int)num_features);
+      }
+    }
+
+    // Check if we are currently zero velocity
+    // We need to pass the chi2 and not be above our velocity threshold
+    if (!disparity_passed && (chi2 > _options.chi2_multipler * chi2_check || state->_imu->vel().norm() > _zupt_max_velocity)) {
+      last_zupt_state_timestamp = 0.0;
+      last_zupt_count = 0;
+      PRINT_DEBUG(YELLOW "[ZUPT]: rejected |v_IinG| = %.3f (chi2 %.3f > %.3f)\n" RESET, state->_imu->vel().norm(), chi2,
+                  _options.chi2_multipler * chi2_check);
+      return false;
+    }
+    PRINT_INFO(CYAN "[ZUPT]: accepted |v_IinG| = %.3f (chi2 %.3f < %.3f)\n" RESET, state->_imu->vel().norm(), chi2,
+               _options.chi2_multipler * chi2_check);
+  } else if (last_zupt_count == 0) {
+    PRINT_INFO(CYAN "[ZUPT]: stationary at %.6f, fusing zero velocity (prior |v| = %.3f m/s)\n" RESET, timestamp,
+               state->_imu->vel().norm());
   }
-  PRINT_INFO(CYAN "[ZUPT]: accepted |v_IinG| = %.3f (chi2 %.3f < %.3f)\n" RESET, state->_imu->vel().norm(), chi2,
-             _options.chi2_multipler * chi2_check);
 
   // Do our update, only do this update if we have previously detected
   // If we have succeeded, then we should remove the current timestamp feature tracks
   // This is because we will not clone at this timestep and instead do our zero velocity update
   // NOTE: We want to keep the tracks from the second time we have called the zv-upt since this won't have a clone
   // NOTE: All future times after the second call to this function will also *not* have a clone, so we can remove those
-  if (last_zupt_count >= 2) {
+  if (last_zupt_count >= 2 && (!explicit_velocity_update || last_zupt_state_timestamp != stationary_since)) {
     _db->cleanup_measurements_exact(last_zupt_state_timestamp);
   }
 
@@ -276,6 +342,11 @@ bool UpdaterZeroVelocity::try_update(std::shared_ptr<State> state, double timest
 
     // Finally move the state time forward
     StateHelper::EKFUpdate(state, Hx_order, H, res, R);
+    if (explicit_velocity_update) {
+      constexpr double velocity_std = 0.01; // m/s once the camera and IMU confirm stationarity
+      const Eigen::Matrix3d velocity_covariance = velocity_std * velocity_std * Eigen::Matrix3d::Identity();
+      StateHelper::EKFUpdate(state, {state->_imu->v()}, Eigen::Matrix3d::Identity(), -state->_imu->vel(), velocity_covariance);
+    }
     state->_timestamp = timestamp;
 
   } else {
