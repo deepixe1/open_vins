@@ -159,6 +159,10 @@ protected:
   // Our subscribers and camera synchronizers
   rclcpp::CallbackGroup::SharedPtr callback_group_imu;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
+  rclcpp::CallbackGroup::SharedPtr callback_group_odometry;
+  rclcpp::TimerBase::SharedPtr propagated_odometry_timer;
+  std::atomic<double> latest_imu_timestamp{-1.0};
+  double last_propagated_odometry_timestamp = -1.0;
   std::vector<rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr> subs_cam;
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> sync_pol;
   std::vector<std::shared_ptr<message_filters::Synchronizer<sync_pol>>> sync_cam;

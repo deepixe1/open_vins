@@ -21,6 +21,9 @@
 
 #include "ROS2Visualizer.h"
 
+#include <cmath>
+#include <stdexcept>
+
 #include "core/VioManager.h"
 #include "ros/ROSVisualizerHelper.h"
 #include "sim/Simulator.h"
@@ -91,6 +94,30 @@ ROS2Visualizer::ROS2Visualizer(std::shared_ptr<rclcpp::Node> node, std::shared_p
   }
   if (node->has_parameter("publish_calibration_tf")) {
     node->get_parameter<bool>("publish_calibration_tf", publish_calibration_tf);
+  }
+
+  double propagated_odom_hz = 0.0;
+  if (node->has_parameter("propagated_odom_hz")) {
+    node->get_parameter("propagated_odom_hz", propagated_odom_hz);
+  }
+  if (!std::isfinite(propagated_odom_hz) || propagated_odom_hz < 0.0) {
+    throw std::invalid_argument("propagated_odom_hz must be finite and nonnegative");
+  }
+  if (propagated_odom_hz > 0.0) {
+    // Run optional high-rate output separately so its propagation cannot hold the IMU callback group.
+    callback_group_odometry = node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    propagated_odometry_timer = node->create_wall_timer(
+        std::chrono::duration<double>(1.0 / propagated_odom_hz),
+        [this] {
+          const double timestamp = latest_imu_timestamp.load(std::memory_order_acquire);
+          if (timestamp == last_propagated_odometry_timestamp) {
+            return;
+          }
+          last_propagated_odometry_timestamp = timestamp;
+          visualize_odometry(timestamp);
+        },
+        callback_group_odometry);
+    RCLCPP_INFO(node->get_logger(), "Propagated odometry/TF: up to %.1f Hz on a separate callback group", propagated_odom_hz);
   }
 
   // Load groundtruth if we have it and are not doing simulation
@@ -457,7 +484,11 @@ void ROS2Visualizer::callback_inertial(const sensor_msgs::msg::Imu::SharedPtr ms
 
   // send it to our VIO system
   _app->feed_measurement_imu(message);
-  visualize_odometry(message.timestamp);
+  if (propagated_odometry_timer) {
+    latest_imu_timestamp.store(message.timestamp, std::memory_order_release);
+  } else {
+    visualize_odometry(message.timestamp);
+  }
 
   // If the processing queue is currently active / running just return so we can keep getting measurements
   // Otherwise create a second thread to do our update in an async manor
