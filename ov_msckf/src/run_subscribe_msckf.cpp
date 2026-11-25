@@ -99,8 +99,9 @@ int main(int argc, char **argv) {
   spinner.start();
   ros::waitForShutdown();
 #elif ROS_AVAILABLE == 2
-  // rclcpp::spin(node);
-  rclcpp::executors::MultiThreadedExecutor executor;
+  // Match the 3 concurrent callback groups (camera, IMU, propagated odometry)
+  // instead of spawning one executor thread per CPU core.
+  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 3);
   executor.add_node(node);
   executor.spin();
 #endif
